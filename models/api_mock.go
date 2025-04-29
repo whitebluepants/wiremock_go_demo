@@ -23,6 +23,7 @@ func (s *CcamMockApi) TableName() string {
 func GetExpectedMockApi(apiID int64) ([]CcamMockApi, error) {
 	return []CcamMockApi{
 		{
+			// 正常Api Path情况
 			MockApiID:       1,
 			ApiID:           apiID,
 			ApiDescription:  "Mock API Description",
@@ -35,6 +36,20 @@ func GetExpectedMockApi(apiID int64) ([]CcamMockApi, error) {
 			CreateTime:      "2024-01-01 00:00:00",
 			UpdateTime:      "2024-01-01 00:00:00",
 		},
+		// 占位符Path 情况
+		// {
+		// 	MockApiID:       2,
+		// 	ApiID:           apiID,
+		// 	ApiDescription:  "Mock API Description 2",
+		// 	ApiPath:         "/mock/api/{path_test}/path2",
+		// 	ApiMethod:       "POST",
+		// 	MockType:        1,
+		// 	MockEnabled:     1,
+		// 	DefaultResponse: `{\"message\": \"Mock response 2\"}`,
+		// 	Deprecated:      0,
+		// 	CreateTime:      "2024-01-02 00:00:00",
+		// 	UpdateTime:      "2024-01-02 00:00:00",
+		// },
 	}, nil
 
 	// var mockApis []CcamMockApi
@@ -68,15 +83,33 @@ func (s *CcamMockRule) TableName() string {
 func GetCcamMockRulesByMockApiID(mockApiID int64) ([]CcamMockRule, error) {
 	// 硬编码返回示例
 	return []CcamMockRule{
+		// {
+		// 	RuleID:           1,
+		// 	MockApiID:        mockApiID,
+		// 	ConditionType:    "header",
+		// 	ConditionKey:     "header-test",
+		// 	ConditionValue:   "test",
+		// 	ResponseTemplate: `{\"message\": \"Mock expectation response\"}`,
+		// 	Deleted:          0,
+		// },
 		{
-			RuleID:           1,
+			RuleID:           2,
 			MockApiID:        mockApiID,
-			ConditionType:    "header",
-			ConditionKey:     "Content-Type",
-			ConditionValue:   "application/json",
-			ResponseTemplate: `{\"message\": \"Mock response\"}`,
+			ConditionType:    "query",
+			ConditionKey:     "query-test",
+			ConditionValue:   "123",
+			ResponseTemplate: `{\"message\": \"Mock expectation response\"}`,
 			Deleted:          0,
 		},
+		// {
+		// 	RuleID:           3,
+		// 	MockApiID:        mockApiID,
+		// 	ConditionType:    "body",
+		// 	ConditionKey:     "body-test",
+		// 	ConditionValue:   "abc",
+		// 	ResponseTemplate: `{\"message\": \"Mock expectation response\"}`,
+		// 	Deleted:          0,
+		// },
 	}, nil
 
 	// var mockRules []CcamMockRule

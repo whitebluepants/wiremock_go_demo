@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"strconv"
@@ -14,7 +15,7 @@ import (
 
 var wiremockClient *wiremock.Client
 var wireDomain = "localhost"
-var wirePort = 8080
+var wirePort = 8099
 
 // wiremock_demo/main.go: 根据ccam库表数据生成wireMock stub
 func main() {
@@ -106,9 +107,9 @@ func expectationMockInit() {
 
 		// stubPath: stub路径, 如果要使用URL Matching, 需要把query参数拼接到stubPath一起注册, 否则无法匹配
 		stubPath := fmt.Sprintf("/%v%s", mockApi.ApiID, mockApi.ApiPath)
+
 		// realPath: 真实访问路径, debug用
 		realPath := fmt.Sprintf("http://%s:%v%s", wireDomain, wirePort, stubPath)
-
 		var queryParams []string
 		// 遍历mock期望规则，收集query参数
 		for _, rule := range mockRules {
@@ -116,16 +117,15 @@ func expectationMockInit() {
 				queryParams = append(queryParams, fmt.Sprintf("%s=%s", rule.ConditionKey, rule.ConditionValue))
 			}
 		}
-
+		// 突然想到, stubPath要加query参数只是因为默认mock要区分不同响应码才需要
+		// 而期望mock我们要判断query, 直接通过sdk即可
 		if len(queryParams) > 0 {
-			// stubPath注册的时候?前面要加\, 但是访问的时候不需要
-			stubPath += "\\?" + strings.Join(queryParams, "&")
 			realPath += "?" + strings.Join(queryParams, "&")
 		}
 
 		// stubRule stub的规则, 遍历每条期望规则完善rule
 		var stubRule *wiremock.StubRule
-		stubRule = wiremock.NewStubRule(mockApi.ApiMethod, wiremock.URLMatching(stubPath))
+		stubRule = wiremock.NewStubRule(mockApi.ApiMethod, wiremock.URLPathMatching(stubPath))
 
 		// 目前响应规则是写在rule表, 并且rule有多条记录, 通过flag判断只加一次响应
 		var isFirst bool = true
@@ -136,24 +136,36 @@ func expectationMockInit() {
 			case "header":
 				stubRule = stubRule.WithHeader(rule.ConditionKey, wiremock.EqualTo(rule.ConditionValue))
 			case "query":
-				// 前面已经处理了query参数到stubPath，这里可以跳过或者添加额外校验
-				// stubRule = stubRule.WithQueryParam(rule.ConditionKey, wiremock.EqualTo(rule.ConditionValue))
-			case "body":
-				stubRule = stubRule.WithBodyPattern(wiremock.EqualToJson(rule.ConditionValue))
+				stubRule = stubRule.WithQueryParam(rule.ConditionKey, wiremock.EqualTo(rule.ConditionValue))
 			case "path":
-				stubRule = wiremock.NewStubRule(mockApi.ApiMethod, wiremock.URLPathMatching(rule.ConditionValue))
+				stubRule = stubRule.WithPathParam(rule.ConditionKey, wiremock.EqualTo(rule.ConditionValue))
+			case "body":
+				// body的判断函数都是只有一个入参, 难道是要把key&value一起marshal后传入?
+				s, _ := json.Marshal(map[string]interface{}{rule.ConditionKey: rule.ConditionValue})
+				stubRule = stubRule.WithBodyPattern(wiremock.MatchingJsonPath(string(s)))
 			}
 
 			if isFirst && stubRule != nil {
+				// 数据库里存的是json字符串, 要反序列化成map
+				var responseTemplate map[string]interface{}
+				json.Unmarshal([]byte(rule.ResponseTemplate), &responseTemplate)
+				s, _ := json.Marshal(responseTemplate)
+
 				stubRule = stubRule.WillReturnResponse(
 					wiremock.NewResponse().
 						WithStatus(200).
-						WithBody(rule.ResponseTemplate).
+						WithBody(string(s)).
 						WithHeader("Content-Type", "application/json"),
 				)
 				isFirst = false
 			}
 		}
+
+		fmt.Printf("-----------------------------------------\n")
+		fmt.Println("stubPath ==>>", stubPath)
+		fmt.Println("realPath ==>>", realPath)
+		fmt.Printf("stubRule ==>> [%v]\n", stubRule)
+		fmt.Printf("-----------------------------------------\n")
 
 		// 注册stub
 		err := wiremockClient.StubFor(stubRule)

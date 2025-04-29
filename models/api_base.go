@@ -4,6 +4,25 @@ import (
 	"wiremock_go_demo/config"
 )
 
+// CcamApiInfo 对应ccam_api_info表结构
+type CcamApiInfo struct {
+	ApiID       int64  `gorm:"column:api_id;primaryKey"`
+	ApiMethod   string `gorm:"column:api_method"`
+	ApiPath     string `gorm:"column:api_path"`
+	Description string `gorm:"column:description"`
+}
+
+func (s *CcamApiInfo) TableName() string {
+	return "ccam_api_info" // 指定表名
+}
+
+// GetCcamApiInfoByApiID 根据API ID获取接口基本信息
+func GetCcamApiInfoByApiID(apiID int64) (*CcamApiInfo, error) {
+	var apiInfo CcamApiInfo
+	result := config.DB.Where("api_id = ?", apiID).First(&apiInfo)
+	return &apiInfo, result.Error
+}
+
 // CcamApiResponse 对应ccam_api_responses表结构
 type CcamApiResponse struct {
 	ResponseID          int64  `gorm:"primaryKey;column:response_id"`
@@ -16,6 +35,17 @@ type CcamApiResponse struct {
 	UpdateUser          string `gorm:"column:update_user"`
 	UpdateDate          string `gorm:"column:update_date"`
 	Deleted             int    `gorm:"column:deleted"`
+}
+
+func (s *CcamApiResponse) TableName() string {
+	return "ccam_api_responses"
+}
+
+// 查询函数
+func GetCcamApiResponsesByApiID(apiID int64) ([]CcamApiResponse, error) {
+	var responses []CcamApiResponse
+	err := config.DB.Where("api_id = ? AND deleted = 0", apiID).Find(&responses).Error
+	return responses, err
 }
 
 // CcamApiResponseParam 对应ccam_api_response_params表结构
@@ -36,6 +66,16 @@ type CcamApiResponseParam struct {
 	UpdateUser       string `gorm:"column:update_user"`
 	UpdateDate       string `gorm:"column:update_date"`
 	Deleted          int    `gorm:"column:deleted"`
+}
+
+func (s *CcamApiResponseParam) TableName() string {
+	return "ccam_api_response_params"
+}
+
+func GetCcamApiResponseParamsByResponseID(responseID int64) ([]CcamApiResponseParam, error) {
+	var params []CcamApiResponseParam
+	err := config.DB.Where("response_id = ? AND deleted = 0", responseID).Find(&params).Error
+	return params, err
 }
 
 // CcamSchemaProperty 对应ccam_schema_properties表结构
@@ -59,40 +99,12 @@ type CcamSchemaProperty struct {
 	Deleted             int    `gorm:"column:deleted"`
 }
 
-// 查询函数
-func GetCcamApiResponsesByApiID(apiID int64) ([]CcamApiResponse, error) {
-	var responses []CcamApiResponse
-	err := config.DB.Where("api_id = ? AND deleted = 0", apiID).Find(&responses).Error
-	return responses, err
-}
-
-func GetCcamApiResponseParamsByResponseID(responseID int64) ([]CcamApiResponseParam, error) {
-	var params []CcamApiResponseParam
-	err := config.DB.Where("response_id = ? AND deleted = 0", responseID).Find(&params).Error
-	return params, err
+func (s *CcamSchemaProperty) TableName() string {
+	return "ccam_schema_properties"
 }
 
 func GetCcamSchemaPropertiesBySchemaID(schemaID int64) ([]CcamSchemaProperty, error) {
 	var properties []CcamSchemaProperty
 	err := config.DB.Where("schema_id = ? AND deleted = 0", schemaID).Find(&properties).Error
 	return properties, err
-}
-
-// CcamApiInfo 对应ccam_api_info表结构
-type CcamApiInfo struct {
-	ApiID       int64  `gorm:"column:api_id;primaryKey"`
-	ApiMethod   string `gorm:"column:api_method"`
-	ApiPath     string `gorm:"column:api_path"`
-	Description string `gorm:"column:description"`
-}
-
-func (s *CcamApiInfo) TableName() string {
-	return "ccam_api_info" // 指定表名
-}
-
-// GetCcamApiInfoByApiID 根据API ID获取接口基本信息
-func GetCcamApiInfoByApiID(apiID int64) (*CcamApiInfo, error) {
-	var apiInfo CcamApiInfo
-	result := config.DB.Where("api_id = ?", apiID).First(&apiInfo)
-	return &apiInfo, result.Error
 }

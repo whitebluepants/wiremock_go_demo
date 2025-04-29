@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"wiremock_go_demo/faker"
 	"wiremock_go_demo/models"
 	"wiremock_go_demo/response"
@@ -24,8 +25,10 @@ func main() {
 		log.Fatalf("error ==>> wiremockClient.Reset() error=[%v]", err.Error())
 		return
 	}
-	defaultMockInit()
-	// expectationMockInit()
+
+	// 默认mock已验证, 先注释
+	// defaultMockInit()
+	expectationMockInit()
 
 	// 阻塞主进程，防止程序退出
 	// stop := make(chan os.Signal, 1)
@@ -81,6 +84,88 @@ func defaultMockInit() {
 
 // expectationMockInit: 期望Mock
 func expectationMockInit() {
+	/*
+		前端业务逻辑
+		用户配置了一个mock 期望以后, 应该会在ccam_mock_api表里生成一个记录后
+		拿到mock_api_id主键后再到ccam_mock_rule表里生成规则记录
+
+		而这里我们要实现mock期望的stub mapping
+		捞取到属于mock期望的mock_api记录(mock_type = 1)后, 每条记录都去ccam_mock_rule表捞取规则
+		然后根据规则进行stub注册
+	*/
+
+	// 测试接口API ID
+	var apiID int64 = 196
+	// 捞取mock期望记录
+	mockExpectations, _ := models.GetExpectedMockApi(apiID)
+
+	// 遍历mock期望记录, 每个mock期望记录都去ccam_mock_rule表捞取规则
+	for _, mockApi := range mockExpectations {
+		// 捞取规则
+		mockRules, _ := models.GetCcamMockRulesByMockApiID(mockApi.MockApiID)
+
+		// stubPath: stub路径, 如果要使用URL Matching, 需要把query参数拼接到stubPath一起注册, 否则无法匹配
+		stubPath := fmt.Sprintf("/%v%s", mockApi.ApiID, mockApi.ApiPath)
+		// realPath: 真实访问路径, debug用
+		realPath := fmt.Sprintf("http://%s:%v%s", wireDomain, wirePort, stubPath)
+
+		var queryParams []string
+		// 遍历mock期望规则，收集query参数
+		for _, rule := range mockRules {
+			if rule.ConditionType == "query" {
+				queryParams = append(queryParams, fmt.Sprintf("%s=%s", rule.ConditionKey, rule.ConditionValue))
+			}
+		}
+
+		if len(queryParams) > 0 {
+			// stubPath注册的时候?前面要加\, 但是访问的时候不需要
+			stubPath += "\\?" + strings.Join(queryParams, "&")
+			realPath += "?" + strings.Join(queryParams, "&")
+		}
+
+		// stubRule stub的规则, 遍历每条期望规则完善rule
+		var stubRule *wiremock.StubRule
+		stubRule = wiremock.NewStubRule(mockApi.ApiMethod, wiremock.URLMatching(stubPath))
+
+		// 目前响应规则是写在rule表, 并且rule有多条记录, 通过flag判断只加一次响应
+		var isFirst bool = true
+
+		// 遍历mock期望规则，构建匹配规则
+		for _, rule := range mockRules {
+			switch rule.ConditionType {
+			case "header":
+				stubRule = stubRule.WithHeader(rule.ConditionKey, wiremock.EqualTo(rule.ConditionValue))
+			case "query":
+				// 前面已经处理了query参数到stubPath，这里可以跳过或者添加额外校验
+				// stubRule = stubRule.WithQueryParam(rule.ConditionKey, wiremock.EqualTo(rule.ConditionValue))
+			case "body":
+				stubRule = stubRule.WithBodyPattern(wiremock.EqualToJson(rule.ConditionValue))
+			case "path":
+				stubRule = wiremock.NewStubRule(mockApi.ApiMethod, wiremock.URLPathMatching(rule.ConditionValue))
+			}
+
+			if isFirst && stubRule != nil {
+				stubRule = stubRule.WillReturnResponse(
+					wiremock.NewResponse().
+						WithStatus(200).
+						WithBody(rule.ResponseTemplate).
+						WithHeader("Content-Type", "application/json"),
+				)
+				isFirst = false
+			}
+		}
+
+		// 注册stub
+		err := wiremockClient.StubFor(stubRule)
+		if err != nil {
+			fmt.Printf("error ==>> stub规则=[%v], stub错误=[%v]\n", stubRule, err.Error())
+		} else {
+			log.Printf("stub success. 访问路径=[%s]", realPath)
+		}
+	}
+}
+
+func useless() {
 	// map[conditionType]map[conditionKey]conditionValue
 	// mockRule := map[string]map[string]string{
 	// 	"header": {

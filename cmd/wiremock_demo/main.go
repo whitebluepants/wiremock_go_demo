@@ -6,6 +6,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"time"
 	"wiremock_go_demo/faker"
 	"wiremock_go_demo/models"
 	"wiremock_go_demo/response"
@@ -125,7 +126,9 @@ func expectationMockInit() {
 
 		// stubRule stub的规则, 遍历每条期望规则完善rule
 		var stubRule *wiremock.StubRule
-		stubRule = wiremock.NewStubRule(mockApi.ApiMethod, wiremock.URLPathMatching(stubPath))
+		// stubRule = wiremock.NewStubRule(mockApi.ApiMethod, wiremock.URLPathMatching(stubPath))
+		// Template支持Path参数
+		stubRule = wiremock.NewStubRule(mockApi.ApiMethod, wiremock.URLPathTemplate(stubPath))
 
 		// 目前响应规则是写在rule表, 并且rule有多条记录, 通过flag判断只加一次响应
 		var isFirst bool = true
@@ -137,25 +140,28 @@ func expectationMockInit() {
 				stubRule = stubRule.WithHeader(rule.ConditionKey, wiremock.EqualTo(rule.ConditionValue))
 			case "query":
 				stubRule = stubRule.WithQueryParam(rule.ConditionKey, wiremock.EqualTo(rule.ConditionValue))
-			case "path":
-				stubRule = stubRule.WithPathParam(rule.ConditionKey, wiremock.EqualTo(rule.ConditionValue))
 			case "body":
 				// body的判断函数都是只有一个入参, 难道是要把key&value一起marshal后传入?
 				s, _ := json.Marshal(map[string]interface{}{rule.ConditionKey: rule.ConditionValue})
-				stubRule = stubRule.WithBodyPattern(wiremock.MatchingJsonPath(string(s)))
+				stubRule = stubRule.WithBodyPattern(wiremock.EqualToJson(string(s)))
+			case "path":
+				stubRule = stubRule.WithPathParam(rule.ConditionKey, wiremock.EqualTo(rule.ConditionValue))
 			}
 
 			if isFirst && stubRule != nil {
 				// 数据库里存的是json字符串, 要反序列化成map
-				var responseTemplate map[string]interface{}
-				json.Unmarshal([]byte(rule.ResponseTemplate), &responseTemplate)
-				s, _ := json.Marshal(responseTemplate)
+				// todo: 这里先直接返回原字符串, 可能是造的json数据格式有问题, 无法解析
+				// var responseTemplate map[string]interface{}
+				// json.Unmarshal([]byte(rule.ResponseTemplate), &responseTemplate)
+				// s, _ := json.Marshal(responseTemplate)
 
 				stubRule = stubRule.WillReturnResponse(
 					wiremock.NewResponse().
-						WithStatus(200).
-						WithBody(string(s)).
-						WithHeader("Content-Type", "application/json"),
+						WithStatus(505).
+						WithBody(string(rule.ResponseTemplate)).
+						WithHeader("Content-Type", "application/json").
+						WithHeader("ResponseHeader-Test", "ok").
+						WithDelay(wiremock.NewFixedDelay(2 * time.Second)),
 				)
 				isFirst = false
 			}
@@ -175,23 +181,4 @@ func expectationMockInit() {
 			log.Printf("stub success. 访问路径=[%s]", realPath)
 		}
 	}
-}
-
-func useless() {
-	// map[conditionType]map[conditionKey]conditionValue
-	// mockRule := map[string]map[string]string{
-	// 	"header": {
-	// 		"Content-Type": "application/json", // 期望header
-	// 	},
-	// 	"body": {
-	// 		"name": "John", // 期望body
-	// 	},
-	// 	"query": {
-	// 		"age": "30", // 期望query
-	// 	},
-	// 	"path": {
-	// 		"id": "123", // 期望path
-	// 	},
-	// }
-	// wiremock.NewStubRule("GET", wiremock.URLPathMatching("/testExpectation"))
 }
